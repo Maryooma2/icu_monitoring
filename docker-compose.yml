@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  airflow:
+    build:
+      # Context is the Spark copy taken from the Jupyter container (docker compose cp -L pyspark:/usr/local/spark ./spark-dist)
+      context: ./spark-dist
+      dockerfile_inline: |
+        FROM apache/airflow:2.8.1-python3.10
+        USER root
+        RUN apt-get update && apt-get install -y --no-install-recommends openjdk-17-jre-headless procps && rm -rf /var/lib/apt/lists/*
+        ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        COPY . /opt/spark
+        RUN chmod -R a+rX /opt/spark && chmod +x /opt/spark/bin/* /opt/spark/sbin/*
+        ENV SPARK_HOME=/opt/spark
+        ENV PYTHONPATH=/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip
+        USER airflow
+        RUN pip install --no-cache-dir --default-timeout=300 --retries 10 "kafka-python>=2.3.0" papermill ipykernel
+    image: icu_monitoring:latest
+    container_name: icu_monitoring
+    restart: always
+    command: standalone
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
+      # Optional: Slack incoming webhook or Power Automate HTTP trigger URL (set in a .env file next to this file)
+      - ALERT_WEBHOOK_URL=${ALERT_WEBHOOK_URL:-}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./workspace:/opt/airflow/workspace
+      - ./data:/opt/airflow/data:ro
+    ports:
+      - "8085:8080"
+    networks:
+      - icu-net
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - icu-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - icu-net
+
+  pyspark:
+    image: jupyter/pyspark-notebook:latest
+    container_name: pyspark_jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - ./workspace:/home/jovyan/work
+    depends_on:
+      - kafka
+    networks:
+      - icu-net
+
+networks:
+  icu-net:
+    driver: bridge

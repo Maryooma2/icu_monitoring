@@ -1,0 +1,79 @@
+
+DEFINE
+    // ---------- Ward overview ----------
+    MEASURE _Measures[Monitored Patients] =
+        DISTINCTCOUNT(gold_patient_current_status[patient_id])
+
+    MEASURE _Measures[Critical Patients] =
+        CALCULATE(
+            DISTINCTCOUNT(gold_patient_current_status[patient_id]),
+            gold_patient_current_status[patient_status] = "Critical"
+        ) + 0
+
+    MEASURE _Measures[Warning Patients] =
+        CALCULATE(
+            DISTINCTCOUNT(gold_patient_current_status[patient_id]),
+            gold_patient_current_status[patient_status] = "Warning"
+        ) + 0
+
+    MEASURE _Measures[Stable Patients] =
+        CALCULATE(
+            DISTINCTCOUNT(gold_patient_current_status[patient_id]),
+            gold_patient_current_status[patient_status] = "Stable"
+        ) + 0
+
+    MEASURE _Measures[Silent Devices] =
+        CALCULATE(
+            COUNTROWS(gold_patient_current_status),
+            gold_patient_current_status[is_stale] = TRUE()
+        ) + 0
+
+    MEASURE _Measures[% Critical] =
+        DIVIDE([Critical Patients], [Monitored Patients], 0)
+
+    MEASURE _Measures[Data As Of] =
+        VAR t = MAX(gold_patient_current_status[gold_processed_at])
+        RETURN IF(ISBLANK(t), BLANK(), FORMAT(t + 2/24, "yyyy-MM-dd HH:mm"))  // UTC+2 (Sudan)
+
+    MEASURE _Measures[Status Color] =
+        SWITCH(
+            SELECTEDVALUE(gold_patient_current_status[patient_status]),
+            "Critical", "#d64545",
+            "Warning",  "#f0a30a",
+            "Stable",   "#2f9e44",
+            "#8a8a8a"
+        )
+
+    // ---------- Patient trends ----------
+    MEASURE _Measures[Selected Status] =
+        SELECTEDVALUE(gold_patient_current_status[patient_status], "Select a patient")
+
+    MEASURE _Measures[Selected Score] =
+        SELECTEDVALUE(gold_patient_current_status[total_score])
+
+    MEASURE _Measures[Selected SpO2] =
+        SELECTEDVALUE(gold_patient_current_status[spo2])
+
+    MEASURE _Measures[Selected HR] =
+        SELECTEDVALUE(gold_patient_current_status[heart_rate])
+
+    MEASURE _Measures[Row Status Color] =
+        SWITCH(
+            SELECTEDVALUE(gold_patient_vitals_scored[patient_status]),
+            "Critical", "#d64545",
+            "Warning",  "#f0a30a",
+            "Stable",   "#2f9e44",
+            "#8a8a8a"
+        )
+
+    // ---------- Daily KPIs and data quality ----------
+    MEASURE _Measures[Out Of Range Readings] =
+        SUM(gold_daily_patient_kpi[out_of_range_readings])
+
+    MEASURE _Measures[Readings With Missing Vitals] =
+        SUM(gold_daily_patient_kpi[readings_with_missing_vitals])
+
+EVALUATE
+    ROW("Measures defined", 1)
+
+
