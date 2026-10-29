@@ -150,3 +150,5 @@ Built in Power BI Desktop from the gold CSV exports (setup: [docs/powerbi_setup.
 **Successful pipeline run in Airflow**
 
 ![Airflow DAG run](docs/screenshots/airflow_dag_run.png)
+# icu_monitoring
+End-to-end data platform for ICU vital signs
